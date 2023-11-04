@@ -20,19 +20,19 @@ cleanedLines.cache()
 #Convert into SQL Dataframe.
 from pyspark.sql import Row
 
-def convertToRow(instr) :
+def convertToRow(instr):
     attributeList = instr.split(",")
- 
+
     # rounding of age to range of 10s.    
     ageRound = round(float(attributeList[5]) / 10.0) * 10
-    
+
     #Normalize sex to only 1 and 2.
     sex = attributeList[2]
     if sex =="M":
         sex=1
     elif sex == "F":
         sex=2
-    
+
     #average billed Amount.
     avgBillAmt = (float(attributeList[12]) +  \
                     float(attributeList[13]) + \
@@ -40,7 +40,7 @@ def convertToRow(instr) :
                     float(attributeList[16]) + \
                     float(attributeList[16]) + \
                     float(attributeList[17]) ) / 6.0
-                    
+
     #average pay amount
     avgPayAmt = (float(attributeList[18]) +  \
                     float(attributeList[19]) + \
@@ -48,7 +48,7 @@ def convertToRow(instr) :
                     float(attributeList[21]) + \
                     float(attributeList[22]) + \
                     float(attributeList[23]) ) / 6.0
-                    
+
     #Find average pay duration. 
     #Make sure numbers are rounded and negative values are eliminated
     avgPayDuration = round((abs(float(attributeList[6])) + \
@@ -57,26 +57,25 @@ def convertToRow(instr) :
                         abs(float(attributeList[9])) +\
                         abs(float(attributeList[10])) +\
                         abs(float(attributeList[11]))) / 6)
-    
+
     #Average percentage paid. add this as an additional field to see
     #if this field has any predictive capabilities. This is 
     #additional creative work that you do to see possibilities.                    
     perPay = round((avgPayAmt/(avgBillAmt+1) * 100) / 25) * 25
-                    
-    values = Row (  CUSTID = attributeList[0], \
-                    LIMIT_BAL = float(attributeList[1]), \
-                    SEX = float(sex),\
-                    EDUCATION = float(attributeList[3]),\
-                    MARRIAGE = float(attributeList[4]),\
-                    AGE = float(ageRound), \
-                    AVG_PAY_DUR = float(avgPayDuration),\
-                    AVG_BILL_AMT = abs(float(avgBillAmt)), \
-                    AVG_PAY_AMT = float(avgPayAmt), \
-                    PER_PAID= abs(float(perPay)), \
-                    DEFAULTED = float(attributeList[24]) 
-                    )
 
-    return values
+    return Row(
+        CUSTID=attributeList[0],
+        LIMIT_BAL=float(attributeList[1]),
+        SEX=float(sex),
+        EDUCATION=float(attributeList[3]),
+        MARRIAGE=float(attributeList[4]),
+        AGE=float(ageRound),
+        AVG_PAY_DUR=float(avgPayDuration),
+        AVG_BILL_AMT=abs(float(avgBillAmt)),
+        AVG_PAY_AMT=float(avgPayAmt),
+        PER_PAID=abs(float(perPay)),
+        DEFAULTED=float(attributeList[24]),
+    )
 
 #Cleanedup RDD    
 ccRows = cleanedLines.map(convertToRow)
@@ -155,20 +154,20 @@ for i in ccDf.columns:
 import math
 from pyspark.ml.linalg import Vectors
 
-def transformToLabeledPoint(row) :
-    lp = ( row["DEFAULTED"], \
-            Vectors.dense([
-                row["AGE"], \
-                row["AVG_BILL_AMT"], \
-                row["AVG_PAY_AMT"], \
-                row["AVG_PAY_DUR"], \
-                row["EDUCATION"], \
-                row["LIMIT_BAL"], \
-                row["MARRIAGE"], \
-                row["PER_PAID"], \
-                row["SEX"]
-        ]))
-    return lp
+def transformToLabeledPoint(row):
+    return row["DEFAULTED"], Vectors.dense(
+        [
+            row["AGE"],
+            row["AVG_BILL_AMT"],
+            row["AVG_PAY_AMT"],
+            row["AVG_PAY_DUR"],
+            row["EDUCATION"],
+            row["LIMIT_BAL"],
+            row["MARRIAGE"],
+            row["PER_PAID"],
+            row["SEX"],
+        ]
+    )
     
 ccLp = ccFinalDf.rdd.repartition(2).map(transformToLabeledPoint)
 ccLp.collect()
@@ -234,17 +233,17 @@ stdValues=summStats.iloc[2,1:5].values.tolist()
 bcMeans=SpContext.broadcast(meanValues)
 bcStdDev=SpContext.broadcast(stdValues)
 
-def centerAndScale(inRow) :
+def centerAndScale(inRow):
     global bcMeans
     global bcStdDev
-    
+
     meanArray=bcMeans.value
     stdArray=bcStdDev.value
 
-    retArray=[]
-    for i in range(len(meanArray)):
-        retArray.append( (float(inRow[i]) - float(meanArray[i])) /\
-            float(stdArray[i]) )
+    retArray = [
+        (float(inRow[i]) - float(meanArray[i])) / float(stdArray[i])
+        for i in range(len(meanArray))
+    ]
     return Row(CUSTID=inRow[4], features=Vectors.dense(retArray))
     
 ccMap = ccClustDf.rdd.repartition(2).map(centerAndScale)
